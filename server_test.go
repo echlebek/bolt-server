@@ -1,0 +1,278 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"reflect"
+	"testing"
+
+	"github.com/boltdb/bolt"
+)
+
+func init() {
+	log.SetOutput(ioutil.Discard)
+}
+
+func getBoltDB(t *testing.T) *bolt.DB {
+	td, err := ioutil.TempDir("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fp := filepath.Join(td, "bolt.db")
+	db, err := bolt.Open(fp, 0600, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createHeaderBucketIfNotExists(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := createRootBucketIfNotExists(db); err != nil {
+		t.Fatal(err)
+	}
+	return db
+}
+
+type server struct {
+	*httptest.Server
+	db *bolt.DB
+}
+
+func newServer(t *testing.T) server {
+	db := getBoltDB(t)
+	ctx := context{db}
+	return server{
+		Server: httptest.NewServer(router{ctx: ctx}),
+		db:     db,
+	}
+}
+
+// End-to-end test.
+func TestCRUD(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	// Get the root bucket
+	{
+		resp, err := http.Get(s.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got, want := body, []byte("[]\n"); !bytes.Equal(got, want) {
+			t.Errorf("bad body: got %q, want %q", string(got), string(want))
+		}
+	}
+
+	// Create a bucket, /foo/bar
+	{
+		req, err := http.NewRequest("PUT", s.URL+"/foo/bar", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("bad status code: got %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(b) != 0 {
+			t.Fatalf("server wrote bytes when it shouldn't: %q", string(b))
+		}
+	}
+
+	// Get the root bucket
+	{
+		resp, err := http.Get(s.URL)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("bad status code: got %d, want %d", resp.StatusCode, http.StatusOK)
+		}
+
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Expect to see a bucket "foo"
+		got, want := []string{}, []string{"foo"}
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("bad bucket list: got %v, want %v", got, want)
+		}
+	}
+
+	// Get bucket "foo"
+	{
+		resp, err := http.Get(s.URL + "/foo")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		got, want := []string{}, []string{"bar"}
+		if err := json.Unmarshal(b, &got); err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("bad bucket list: got %v, want %v", got, want)
+		}
+	}
+
+	var eTag string
+
+	// Create a JSON document, /foo/xfiles
+	{
+		b, err := json.Marshal(map[string]interface{}{
+			"The X-Files": map[string]interface{}{
+				"Fox Mulder":  "FBI",
+				"Dana Scully": "FBI",
+			},
+		})
+
+		req, err := http.NewRequest("PUT", s.URL+"/foo/xfiles", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if eTag = resp.Header.Get("ETag"); len(eTag) == 0 {
+			t.Error("zero-length ETag")
+		}
+
+		respBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(respBody) != 0 {
+			t.Errorf("unexpected bytes in response body: %q", string(respBody))
+		}
+	}
+
+	// Get the header for the JSON document. Expect Content-Type, Content-Length and ETag to be present.
+	{
+		resp, err := http.Head(s.URL + "/foo/xfiles")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := resp.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Bad Content-Type: got %q, want %q", got, "application/json")
+		}
+
+		if got := resp.Header.Get("Content-Length"); got != "56" {
+			t.Errorf("Bad Content-Length: got %q, want %q", got, "56")
+		}
+
+		if got := resp.Header.Get("ETag"); got != eTag {
+			t.Errorf("Bad ETag: got %q, want %q", got, eTag)
+		}
+	}
+
+	// Get the JSON document. Expect Content-Type, Content-Length and ETag to be present.
+	{
+		want := map[string]interface{}{
+			"The X-Files": map[string]interface{}{
+				"Fox Mulder":  "FBI",
+				"Dana Scully": "FBI",
+			},
+		}
+
+		resp, err := http.Get(s.URL + "/foo/xfiles")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got := resp.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Bad Content-Type: got %q, want %q", got, "application/json")
+		}
+
+		if got := resp.Header.Get("Content-Length"); got != "56" {
+			t.Errorf("Bad Content-Length: got %q, want %q", got, "56")
+		}
+
+		if got := resp.Header.Get("ETag"); got != eTag {
+			t.Errorf("Bad ETag: got %q, want %q", got, eTag)
+		}
+
+		var got map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("bad content: got %#v, want %#v\n", got, want)
+		}
+	}
+
+	// Delete the document /foo/xfiles
+	{
+		req, err := http.NewRequest("DELETE", s.URL+"/foo/xfiles", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(b) > 0 {
+			t.Errorf("response body not empty: %q", string(b))
+		}
+	}
+
+	// Try and fail to get /foo/xfiles
+	{
+		resp, err := http.Get(s.URL + "/foo/xfiles")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if got, want := resp.StatusCode, http.StatusNotFound; got != want {
+			t.Errorf("bad status: got %d, want %d", got, want)
+		}
+	}
+}
