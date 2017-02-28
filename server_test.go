@@ -51,6 +51,26 @@ func newServer(t *testing.T) server {
 	}
 }
 
+func TestDisallowedMethods(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	for _, method := range []string{"POST", "PATCH", "TRACE", "CONNECT"} {
+		req, err := http.NewRequest(method, s.URL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := resp.StatusCode, http.StatusMethodNotAllowed; got != want {
+			t.Errorf("Bad status code: got %d, want %d", got, want)
+		}
+	}
+}
+
 // End-to-end test.
 func TestCRUD(t *testing.T) {
 	s := newServer(t)

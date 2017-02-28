@@ -98,13 +98,14 @@ func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		getHeader(r.ctx, w, req)
 	case "OPTIONS":
 		w.Header().Set("Allow", "GET,PUT,DELETE,HEAD")
-		return
 	case "GET":
 		getBucketOrValue(r.ctx, w, req)
 	case "PUT":
 		putBucketOrValue(r.ctx, w, req)
 	case "DELETE":
 		deleteBucketOrKey(r.ctx, w, req)
+	case "POST", "PATCH", "TRACE", "CONNECT":
+		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 	default:
 		http.Error(w, "Bad request.", http.StatusBadRequest)
 	}
