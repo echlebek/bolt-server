@@ -44,7 +44,6 @@ var (
 	headerFieldsToExtract = []string{
 		"Content-Type",
 		"Content-Length",
-		"ETag",
 	}
 )
 
