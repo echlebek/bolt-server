@@ -266,7 +266,10 @@ func TestCRUD(t *testing.T) {
 
 		if got := resp.Header.Get("ETag"); got != eTag {
 			t.Errorf("Bad ETag: got %q, want %q", got, eTag)
+		} else if len(got) != 12 {
+			t.Errorf("ETag wrong length")
 		}
+
 	}
 
 	// Get the JSON document. Expect Content-Type, Content-Length and ETag to be present.
