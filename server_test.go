@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/boltdb/bolt"
 )
@@ -291,7 +292,8 @@ func TestCRUD(t *testing.T) {
 		}
 	}
 
-	// Get the header for the JSON document. Expect Content-Type, Content-Length and ETag to be present.
+	// Get the header for the JSON document.
+	// Expect Content-Type, Content-Length, ETag, Last-Modified to be present.
 	{
 		resp, err := http.Head(s.URL + "/foo/xfiles")
 		if err != nil {
@@ -310,6 +312,11 @@ func TestCRUD(t *testing.T) {
 			t.Errorf("Bad ETag: got %q, want %q", got, eTag)
 		} else if len(got) != 12 {
 			t.Errorf("ETag wrong length: got %q, want %q", len(got), 12)
+		}
+
+		lastModified := resp.Header.Get("Last-Modified")
+		if _, err := time.Parse(time.RFC1123Z, lastModified); err != nil {
+			t.Errorf("bad Last-Modified: got %q", lastModified)
 		}
 	}
 

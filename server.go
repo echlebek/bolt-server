@@ -32,6 +32,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/boltdb/bolt"
 )
@@ -276,7 +277,10 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			header := extractHeader(req.Header)
 			eTag := etag(buf)
 			header.Set("ETag", eTag)
+			lastModified := time.Now().UTC().Format(time.RFC1123Z)
+			header.Set("Last-Modified", lastModified)
 			w.Header().Set("ETag", eTag)
+			w.Header().Set("Last-Modified", lastModified)
 			return writeHeaderValue(tx, req.URL.EscapedPath(), header)
 		}
 		return nil
