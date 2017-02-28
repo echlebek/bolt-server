@@ -38,6 +38,7 @@ import (
 
 var (
 	DBName       = flag.String("db", "bolt.db", "Bolt database to use")
+	Port         = flag.Int("port", 8080, "Port to serve from")
 	headerBucket = append([]byte{0}, []byte("headers")...)
 	headerKeys   = []string{
 		"Content-Type",
@@ -387,6 +388,7 @@ func getHeader(ctx context, w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	flag.Parse()
 	db, err := bolt.Open(*DBName, 0600, nil)
 	if err != nil {
 		log.Fatal(err)
@@ -399,5 +401,5 @@ func main() {
 	}
 	ctx := context{db}
 	router := router{ctx}
-	http.ListenAndServe(":8080", router)
+	http.ListenAndServe(fmt.Sprintf(":%d", *Port), router)
 }
