@@ -196,6 +196,10 @@ func TestCRUD(t *testing.T) {
 			t.Error("zero-length ETag")
 		}
 
+		if got, want := eTag, etag(b); got != want {
+			t.Errorf("bad etag: got %q, want %q", got, want)
+		}
+
 		respBody, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)

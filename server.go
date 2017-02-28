@@ -328,7 +328,7 @@ func deleteBucketOrKey(ctx context, w http.ResponseWriter, req *http.Request) {
 // base64 encoded etag
 func etag(b []byte) string {
 	h := fnv.New64a()
-	return base64.StdEncoding.EncodeToString(h.Sum(nil))
+	return base64.StdEncoding.EncodeToString(h.Sum(b))
 }
 
 func extractHeader(h http.Header) http.Header {
