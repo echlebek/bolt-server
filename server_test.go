@@ -52,6 +52,48 @@ func newServer(t *testing.T) server {
 	}
 }
 
+func TestIfNoneMatch(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	req, err := http.NewRequest("PUT", s.URL+"/foo", strings.NewReader("foobar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eTag := resp.Header.Get("ETag")
+
+	req, err = http.NewRequest("GET", s.URL+"/foo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("If-None-Match", eTag)
+
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusNotModified; got != want {
+		t.Errorf("Bad status: got %d, want %d", got, want)
+	}
+
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(b) > 0 {
+		t.Errorf("Response body not empty: %q", string(b))
+	}
+}
+
 func TestDisallowedMethods(t *testing.T) {
 	s := newServer(t)
 	defer s.Close()

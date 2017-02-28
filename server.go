@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"hash/fnv"
 	"io"
 	"log"
@@ -111,6 +112,18 @@ func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// returns the ETag that matched the If-None-Match
+func checkIfNoneMatch(storedHeader http.Header, req *http.Request) bool {
+	if nm := req.Header["If-None-Match"]; len(nm) > 0 {
+		for _, m := range nm {
+			if m == "*" || m == storedHeader.Get("ETag") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	var (
 		keys []string
@@ -125,6 +138,21 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	err = ctx.db.View(func(tx *bolt.Tx) error {
+		header, err := getHeaderValue(tx, req)
+		if err != nil {
+			return fmt.Errorf("couldn't get header: %s", err)
+		}
+
+		if header != nil {
+			if checkIfNoneMatch(header, req) {
+				hdr := make(http.Header)
+				hdr.Set("ETag", header.Get("ETag"))
+				writeHeader(hdr, w)
+				w.WriteHeader(http.StatusNotModified)
+				return nil
+			}
+		}
+
 		p := parts
 		if len(parts) > 1 {
 			p = parts[:len(parts)-1]
@@ -146,7 +174,7 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			keys, err = listKeys(bucket)
 			return err
 		} else if value != nil {
-			getHeader(ctx, w, req)
+			writeHeader(header, w)
 			_, err := w.Write(value)
 			return err
 		}
