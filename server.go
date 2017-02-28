@@ -119,7 +119,7 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	)
 
 	parts := [][]byte{{'/'}}
-	for _, p := range bytes.Split([]byte(req.URL.Path), []byte{'/'}) {
+	for _, p := range bytes.Split([]byte(req.URL.EscapedPath()), []byte{'/'}) {
 		if len(p) > 0 {
 			parts = append(parts, p)
 		}
@@ -172,7 +172,7 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			return errors.New("missing header bucket")
 		}
 		header := new(http.Header)
-		value := bucket.Get([]byte(req.URL.Path))
+		value := bucket.Get([]byte(req.URL.EscapedPath()))
 		if value == nil {
 			return nil
 		}
@@ -220,7 +220,7 @@ func getOrCreateBoltBucket(tx *bolt.Tx, parts [][]byte) (*bolt.Bucket, error) {
 
 func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	parts := [][]byte{{'/'}}
-	for _, p := range bytes.Split([]byte(req.URL.Path), []byte{'/'}) {
+	for _, p := range bytes.Split([]byte(req.URL.EscapedPath()), []byte{'/'}) {
 		if len(p) > 0 {
 			parts = append(parts, p)
 		}
@@ -265,7 +265,7 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			eTag := etag(buf)
 			header.Set("ETag", eTag)
 			w.Header().Set("ETag", eTag)
-			return writeHeader(tx, req.URL.Path, header)
+			return writeHeader(tx, req.URL.EscapedPath(), header)
 
 		} else {
 			// Try to read exactly one byte to see if the request
@@ -299,7 +299,7 @@ func writeHeader(tx *bolt.Tx, path string, header http.Header) error {
 
 func deleteBucketOrKey(ctx context, w http.ResponseWriter, req *http.Request) {
 	parts := [][]byte{{'/'}}
-	for _, p := range bytes.Split([]byte(req.URL.Path), []byte{'/'}) {
+	for _, p := range bytes.Split([]byte(req.URL.EscapedPath()), []byte{'/'}) {
 		if len(p) > 0 {
 			parts = append(parts, p)
 		}
@@ -349,7 +349,7 @@ func getHeader(ctx context, w http.ResponseWriter, req *http.Request) {
 		if bucket == nil {
 			return bolt.ErrBucketNotFound
 		}
-		h := bucket.Get([]byte(req.URL.Path))
+		h := bucket.Get([]byte(req.URL.EscapedPath()))
 		if h == nil {
 			return bolt.ErrBucketNotFound
 		}

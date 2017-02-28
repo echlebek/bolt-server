@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/boltdb/bolt"
@@ -68,6 +69,44 @@ func TestDisallowedMethods(t *testing.T) {
 		if got, want := resp.StatusCode, http.StatusMethodNotAllowed; got != want {
 			t.Errorf("Bad status code: got %d, want %d", got, want)
 		}
+	}
+}
+
+func TestEscapedPath(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	req, err := http.NewRequest("PUT", s.URL+"/foo/bar/baz", strings.NewReader("Hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		t.Errorf("Bad status: got %d, want %d", got, want)
+	}
+
+	resp, err = http.Get(s.URL + "/foo/bar%2fbaz") // Fails if escaping is broken
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusNotFound; got != want {
+		t.Errorf("Bad status: got %d, want %d", got, want)
+	}
+
+	resp, err = http.Head(s.URL + "/foo/bar%2fbaz") // Fails if escaping is broken
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusNotFound; got != want {
+		t.Errorf("Bad status: got %d, want %d", got, want)
 	}
 }
 
