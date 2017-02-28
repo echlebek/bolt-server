@@ -311,20 +311,18 @@ func extractHeader(h http.Header) http.Header {
 	return result
 }
 
-func getHeaderValue(ctx context, req *http.Request) (http.Header, error) {
+func getHeaderValue(tx *bolt.Tx, req *http.Request) (http.Header, error) {
 	var header http.Header
 
-	err := ctx.db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(headerBucket)
-		if bucket == nil {
-			return bolt.ErrBucketNotFound
-		}
-		h := bucket.Get([]byte(req.URL.EscapedPath()))
-		if h == nil {
-			return nil
-		}
-		return json.Unmarshal(h, &header)
-	})
+	bucket := tx.Bucket(headerBucket)
+	if bucket == nil {
+		return nil, bolt.ErrBucketNotFound
+	}
+	h := bucket.Get([]byte(req.URL.EscapedPath()))
+	if h == nil {
+		return nil, nil
+	}
+	err := json.Unmarshal(h, &header)
 	return header, err
 }
 
@@ -337,7 +335,12 @@ func writeHeader(header http.Header, w http.ResponseWriter) {
 }
 
 func getHeader(ctx context, w http.ResponseWriter, req *http.Request) {
-	header, err := getHeaderValue(ctx, req)
+	var header http.Header
+	err := ctx.db.View(func(tx *bolt.Tx) error {
+		var err error
+		header, err = getHeaderValue(tx, req)
+		return err
+	})
 	if err == bolt.ErrBucketNotFound {
 		log.Println(err)
 		http.Error(w, "Header bucket not found.", http.StatusInternalServerError)
