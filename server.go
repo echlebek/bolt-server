@@ -132,12 +132,7 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 		err  error
 	)
 
-	parts := [][]byte{{'/'}}
-	for _, p := range bytes.Split([]byte(req.URL.EscapedPath()), []byte{'/'}) {
-		if len(p) > 0 {
-			parts = append(parts, p)
-		}
-	}
+	parts := splitPath(req.URL.EscapedPath())
 
 	err = ctx.db.View(func(tx *bolt.Tx) error {
 		header, err := getHeaderValue(tx, req)
@@ -231,18 +226,22 @@ func getOrCreateBoltBucket(tx *bolt.Tx, parts [][]byte) (*bolt.Bucket, error) {
 	return b, nil
 }
 
-func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
+func splitPath(path string) [][]byte {
 	parts := [][]byte{{'/'}}
-	for _, p := range bytes.Split([]byte(req.URL.EscapedPath()), []byte{'/'}) {
+	for _, p := range bytes.Split([]byte(path), []byte{'/'}) {
 		if len(p) > 0 {
 			parts = append(parts, p)
 		}
 	}
+	return parts
+}
 
+func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	if req.ContentLength > 1<<24 {
 		http.Error(w, "Request too large.", http.StatusBadRequest)
 		return
 	}
+	parts := splitPath(req.URL.EscapedPath())
 	key := parts[len(parts)-1]
 	msg := "Out of cheese."
 	status := 500
