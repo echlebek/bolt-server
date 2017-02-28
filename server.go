@@ -249,23 +249,8 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			header.Set("ETag", eTag)
 			w.Header().Set("ETag", eTag)
 			return writeHeader(tx, req.URL.EscapedPath(), header)
-
-		} else {
-			// Try to read exactly one byte to see if the request
-			// has a non-empty body.
-			buf := make([]byte, 1)
-			if _, err := io.ReadFull(req.Body, buf); err == io.ErrUnexpectedEOF {
-				// We got some bytes in the body without a Content-Length header.
-				msg, status = "Content-Length required.", http.StatusLengthRequired
-				return errors.New("No Content-Length")
-			} else if err != io.EOF {
-				msg, status = "Error processing request.", http.StatusInternalServerError
-				log.Println(err)
-				return err
-			} else {
-				return nil
-			}
 		}
+		return nil
 	})
 	if err != nil {
 		http.Error(w, msg, status)
