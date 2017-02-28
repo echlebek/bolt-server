@@ -38,10 +38,10 @@ import (
 )
 
 var (
-	DBName       = flag.String("db", "bolt.db", "Bolt database to use")
-	Port         = flag.Int("port", 8080, "Port to serve from")
-	headerBucket = append([]byte{0}, []byte("headers")...)
-	headerKeys   = []string{
+	DBName                = flag.String("db", "bolt.db", "Bolt database to use")
+	Port                  = flag.Int("port", 8080, "Port to serve from")
+	headerBucket          = append([]byte{0}, []byte("headers")...)
+	headerFieldsToExtract = []string{
 		"Content-Type",
 		"Content-Length",
 		"ETag",
@@ -334,7 +334,7 @@ func etag(b []byte) string {
 
 func extractHeader(h http.Header) http.Header {
 	result := make(http.Header)
-	for _, k := range headerKeys {
+	for _, k := range headerFieldsToExtract {
 		values := h[k]
 		for _, v := range values {
 			result.Add(k, v)
