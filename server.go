@@ -113,9 +113,8 @@ func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	var (
-		keys  []string
-		value []byte
-		err   error
+		keys []string
+		err  error
 	)
 
 	parts := [][]byte{{'/'}}
@@ -139,14 +138,19 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			return err
 		}
 
+		var value []byte
 		bucket, value = getBoltBucketOrValue(bucket, parts[len(parts)-1])
 		if bucket == nil && value == nil {
-			err = bolt.ErrBucketNotFound
-		}
-		if bucket != nil {
+			return bolt.ErrBucketNotFound
+		} else if bucket != nil {
 			keys, err = listKeys(bucket)
+			return err
+		} else if value != nil {
+			getHeader(ctx, w, req)
+			_, err := w.Write(value)
+			return err
 		}
-		return err
+		return nil
 	})
 
 	if err == bolt.ErrBucketNotFound {
@@ -166,27 +170,6 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	err = ctx.db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(headerBucket)
-		if bucket == nil {
-			return errors.New("missing header bucket")
-		}
-		header := new(http.Header)
-		value := bucket.Get([]byte(req.URL.EscapedPath()))
-		if value == nil {
-			return nil
-		}
-		if err := json.Unmarshal(value, header); err != nil {
-			return err
-		}
-		w.Header()["Content-Type"] = (*header)["Content-Type"]
-		w.Header()["ETag"] = (*header)["Etag"]
-		return nil
-	})
-
-	if _, err := w.Write(value); err != nil {
-		log.Println(err)
-	}
 }
 
 func getBoltBucket(tx *bolt.Tx, parts [][]byte) *bolt.Bucket {
