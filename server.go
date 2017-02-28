@@ -248,7 +248,7 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			eTag := etag(buf)
 			header.Set("ETag", eTag)
 			w.Header().Set("ETag", eTag)
-			return writeHeader(tx, req.URL.EscapedPath(), header)
+			return writeHeaderValue(tx, req.URL.EscapedPath(), header)
 		}
 		return nil
 	})
@@ -258,7 +258,7 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func writeHeader(tx *bolt.Tx, path string, header http.Header) error {
+func writeHeaderValue(tx *bolt.Tx, path string, header http.Header) error {
 	bucket := tx.Bucket(headerBucket)
 	value, _ := json.Marshal(header)
 	return bucket.Put([]byte(path), value)
@@ -311,8 +311,9 @@ func extractHeader(h http.Header) http.Header {
 	return result
 }
 
-func getHeader(ctx context, w http.ResponseWriter, req *http.Request) {
+func getHeaderValue(ctx context, req *http.Request) (http.Header, error) {
 	var header http.Header
+
 	err := ctx.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(headerBucket)
 		if bucket == nil {
@@ -320,24 +321,38 @@ func getHeader(ctx context, w http.ResponseWriter, req *http.Request) {
 		}
 		h := bucket.Get([]byte(req.URL.EscapedPath()))
 		if h == nil {
-			return bolt.ErrBucketNotFound
+			return nil
 		}
 		return json.Unmarshal(h, &header)
 	})
-	if err == bolt.ErrBucketNotFound {
-		http.Error(w, "Not found.", http.StatusNotFound)
-		return
-	} else if err != nil {
-		http.Error(w, "Out of cheese.", http.StatusInternalServerError)
-		return
-	}
+	return header, err
+}
 
+func writeHeader(header http.Header, w http.ResponseWriter) {
 	for key, values := range header {
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
 	}
+}
 
+func getHeader(ctx context, w http.ResponseWriter, req *http.Request) {
+	header, err := getHeaderValue(ctx, req)
+	if err == bolt.ErrBucketNotFound {
+		log.Println(err)
+		http.Error(w, "Header bucket not found.", http.StatusInternalServerError)
+		return
+	} else if err != nil {
+		log.Println(err)
+		http.Error(w, "Out of cheese.", http.StatusInternalServerError)
+		return
+	}
+	if header == nil {
+		http.Error(w, "Not found.", http.StatusNotFound)
+		return
+	}
+
+	writeHeader(header, w)
 }
 
 func main() {
