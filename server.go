@@ -322,7 +322,10 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			header.Set("Last-Modified", lastModified)
 			w.Header().Set("ETag", eTag)
 			w.Header().Set("Last-Modified", lastModified)
-			return writeHeaderValue(tx, req.URL.EscapedPath(), header)
+			if err := writeHeaderValue(tx, req.URL.EscapedPath(), header); err != nil {
+				return tx.Rollback()
+			}
+			return nil
 		}
 		return nil
 	})
