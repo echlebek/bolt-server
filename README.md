@@ -9,7 +9,7 @@ HEAD requests will retrieve the stored headers for a value, if they exist.
 
 GET requests will either result in the retrieval of a stored value (and its
 associated Content-Type, Content-Length and ETag) or a listing of a bucket's
-contents (encoded as a JSON array).
+contents (encoded as a JSON array). GET supports If-None-Match.
 
 PUT requests with a body will create or overwrite a value. PUT requests without
 a body will create a bucket if one does not already exist. If a PUT body is
