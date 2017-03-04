@@ -279,11 +279,15 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	msg := "Out of cheese."
 	status := 500
 	err := ctx.db.Update(func(tx *bolt.Tx) error {
+		alreadyExists := false
 		if req.ContentLength > 0 {
 			header, err := getHeaderValue(tx, req)
 			if err != nil {
 				log.Printf("couldn't get header: %s", err)
 				return err
+			}
+			if header != nil {
+				alreadyExists = true
 			}
 			if !checkIfMatch(header, req) {
 				msg, status = "Precondition failed.", http.StatusPreconditionFailed
@@ -320,10 +324,16 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			header.Set("ETag", eTag)
 			lastModified := time.Now().UTC().Format(time.RFC1123Z)
 			header.Set("Last-Modified", lastModified)
-			w.Header().Set("ETag", eTag)
-			w.Header().Set("Last-Modified", lastModified)
 			if err := writeHeaderValue(tx, req.URL.EscapedPath(), header); err != nil {
 				return tx.Rollback()
+			}
+			w.Header().Set("ETag", eTag)
+			w.Header().Set("Last-Modified", lastModified)
+			if !alreadyExists {
+				w.Header().Set("Location", req.URL.EscapedPath())
+				w.WriteHeader(http.StatusCreated)
+			} else {
+				w.WriteHeader(http.StatusNoContent)
 			}
 			return nil
 		}

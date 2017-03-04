@@ -94,7 +94,7 @@ func TestIfMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := resp.StatusCode, http.StatusOK; got != want {
+	if got, want := resp.StatusCode, http.StatusNoContent; got != want {
 		t.Errorf("bad status: got %d, want %d", got, want)
 	}
 
@@ -215,7 +215,7 @@ func TestEscapedPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, want := resp.StatusCode, http.StatusOK; got != want {
+	if got, want := resp.StatusCode, http.StatusCreated; got != want {
 		t.Errorf("Bad status: got %d, want %d", got, want)
 	}
 
