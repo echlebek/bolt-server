@@ -235,9 +235,43 @@ func splitPath(path string) [][]byte {
 	return parts
 }
 
-func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
+func badPutOrDeleteHeaders(w http.ResponseWriter, req *http.Request) bool {
 	if req.ContentLength > 1<<24 {
 		http.Error(w, "Request too large.", http.StatusBadRequest)
+		return true
+	}
+	if req.Header.Get("If-None-Match") != "" {
+		http.Error(w, "Precondition failed.", http.StatusPreconditionFailed)
+		return true
+	}
+	return false
+}
+
+func checkIfMatch(header http.Header, req *http.Request) bool {
+	if header == nil {
+		for _, m := range req.Header["If-Match"] {
+			if m == "*" {
+				return false
+			}
+		}
+		return true
+	}
+	matches, ok := req.Header["If-Match"]
+	if !ok {
+		return true
+	}
+	if eTag := header.Get("ETag"); eTag != "" {
+		for _, m := range matches {
+			if eTag == m || m == "*" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
+	if badPutOrDeleteHeaders(w, req) {
 		return
 	}
 	parts := splitPath(req.URL.EscapedPath())
@@ -246,6 +280,15 @@ func putBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	status := 500
 	err := ctx.db.Update(func(tx *bolt.Tx) error {
 		if req.ContentLength > 0 {
+			header, err := getHeaderValue(tx, req)
+			if err != nil {
+				log.Printf("couldn't get header: %s", err)
+				return err
+			}
+			if !checkIfMatch(header, req) {
+				msg, status = "Precondition failed.", http.StatusPreconditionFailed
+				return errors.New("precondition failed")
+			}
 			parts = parts[:len(parts)-1]
 			if len(parts) == 0 {
 				msg, status = "Cannot PUT a value in the root bucket.", http.StatusBadRequest
@@ -297,8 +340,12 @@ func writeHeaderValue(tx *bolt.Tx, path string, header http.Header) error {
 }
 
 func deleteBucketOrKey(ctx context, w http.ResponseWriter, req *http.Request) {
+	if badPutOrDeleteHeaders(w, req) {
+		return
+	}
 	parts := [][]byte{{'/'}}
-	for _, p := range bytes.Split([]byte(req.URL.EscapedPath()), []byte{'/'}) {
+	escapedPath := []byte(req.URL.EscapedPath())
+	for _, p := range bytes.Split(escapedPath, []byte{'/'}) {
 		if len(p) > 0 {
 			parts = append(parts, p)
 		}
@@ -307,21 +354,43 @@ func deleteBucketOrKey(ctx context, w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Invalid path.", http.StatusBadRequest)
 		return
 	}
+	var msg, status = "Out of cheese.", http.StatusInternalServerError
 	err := ctx.db.Update(func(tx *bolt.Tx) error {
+		header, err := getHeaderValue(tx, req)
+		if err != nil {
+			log.Printf("couldn't get header: %s", err)
+			return err
+		}
+		if !checkIfMatch(header, req) {
+			msg, status = "Precondition failed.", http.StatusPreconditionFailed
+			return errors.New("precondition failed")
+		}
+		if header == nil {
+			msg, status = "Not found.", http.StatusNotFound
+			return errors.New("Not found")
+		}
 		bucket := getBoltBucket(tx, parts[:len(parts)-1])
 		if bucket == nil {
+			// We got the header, but not the content. Something is seriously
+			// wrong.
+			msg, status = "Internal server error.", http.StatusInternalServerError
+			log.Printf("Can't find content for valid header: %+v", header)
 			return bolt.ErrBucketNotFound
 		}
-		return bucket.Delete(parts[len(parts)-1])
+		if err := tx.Bucket(headerBucket).Delete(escapedPath); err != nil {
+			return err
+		}
+		if err := bucket.Delete(parts[len(parts)-1]); err != nil {
+			log.Printf("error: %s (rolling back tx)", err)
+			return tx.Rollback()
+		}
+		return nil
 	})
-	if err == bolt.ErrBucketNotFound {
-		http.Error(w, "Not found.", http.StatusNotFound)
-		return
-	} else if err != nil {
-		http.Error(w, "Out of cheese.", http.StatusInternalServerError)
-		log.Println(err)
+	if err != nil {
+		http.Error(w, msg, status)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // base64 encoded etag

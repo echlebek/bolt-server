@@ -53,6 +53,91 @@ func newServer(t *testing.T) server {
 	}
 }
 
+func TestIfMatch(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	req, err := http.NewRequest("PUT", s.URL+"/foo", strings.NewReader("foobar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	eTag := resp.Header.Get("ETag")
+	req, err = http.NewRequest("PUT", s.URL+"/foo", strings.NewReader("foobarbaz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Set("If-Match", "foo")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusPreconditionFailed; got != want {
+		t.Errorf("bad status: got %d, want %d", got, want)
+	}
+
+	req, err = http.NewRequest("PUT", s.URL+"/foo", strings.NewReader("foobarbaz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("If-Match", eTag)
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusOK; got != want {
+		t.Errorf("bad status: got %d, want %d", got, want)
+	}
+
+	eTag = resp.Header.Get("ETag")
+
+	req, err = http.NewRequest("DELETE", s.URL+"/foo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("If-Match", "foo")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusPreconditionFailed; got != want {
+		t.Errorf("bad status: got %d, want %d", got, want)
+	}
+
+	req.Header.Set("If-Match", eTag)
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, http.StatusNoContent; got != want {
+		t.Errorf("bad status: got %d, want %d", got, want)
+	}
+
+	req, err = http.NewRequest("PUT", s.URL+"/foo", strings.NewReader("foobarbaz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("If-Match", "*")
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := resp.StatusCode, http.StatusPreconditionFailed; got != want {
+		t.Errorf("bad status: got %d, want %d", got, want)
+	}
+}
+
 func TestIfNoneMatch(t *testing.T) {
 	s := newServer(t)
 	defer s.Close()
