@@ -113,7 +113,7 @@ func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-// returns the ETag that matched the If-None-Match
+// returns whether or not the ETag matched any of the If-None-Match values
 func checkIfNoneMatch(storedHeader http.Header, req *http.Request) bool {
 	if nm := req.Header["If-None-Match"]; len(nm) > 0 {
 		for _, m := range nm {
