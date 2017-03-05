@@ -107,6 +107,7 @@ func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case "DELETE":
 		deleteBucketOrKey(r.ctx, w, req)
 	case "POST", "PATCH", "TRACE", "CONNECT":
+		w.Header().Set("Allow", "GET,PUT,DELETE,HEAD")
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)
 	default:
 		http.Error(w, "Bad request.", http.StatusBadRequest)
