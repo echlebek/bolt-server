@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	"github.com/echlebek/ranger"
 )
 
 var (
@@ -45,6 +46,7 @@ var (
 		"Content-Type",
 		"Content-Length",
 	}
+	errBadRequest = errors.New("bad request")
 )
 
 type context struct {
@@ -171,15 +173,42 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 			keys, err = listKeys(bucket)
 			return err
 		} else if value != nil {
-			writeHeader(header, w)
-			_, err := w.Write(value)
-			return err
+			if _, ok := req.Header["Range"]; ok {
+				ranges, err := ranger.ParseHeader(req.Header, len(value))
+				if err != nil {
+					if err == ranger.Error {
+						return err
+					}
+					return errBadRequest
+				}
+				header.Del("ETag")
+				header.Del("Content-Length")
+				w.WriteHeader(http.StatusPartialContent)
+				writeHeader(header, w)
+				for _, r := range ranges {
+					_, err := w.Write(value[r.Start : r.Stop+1])
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			} else {
+				writeHeader(header, w)
+				_, err := w.Write(value)
+				return err
+			}
 		}
 		return nil
 	})
 
 	if err == bolt.ErrBucketNotFound {
 		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	} else if err == ranger.Error {
+		http.Error(w, "Requested range not satisfiable.", http.StatusRequestedRangeNotSatisfiable)
+		return
+	} else if err == errBadRequest {
+		http.Error(w, "Bad request.", http.StatusBadRequest)
 		return
 	} else if err != nil {
 		log.Println(err)

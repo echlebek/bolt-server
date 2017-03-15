@@ -45,11 +45,79 @@ type server struct {
 }
 
 func newServer(t *testing.T) server {
+	t.Parallel()
 	db := getBoltDB(t)
 	ctx := context{db}
 	return server{
 		Server: httptest.NewServer(router{ctx: ctx}),
 		db:     db,
+	}
+}
+
+func TestRange(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	req, err := http.NewRequest("PUT", s.URL+"/foo", strings.NewReader("foobarbaz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req, err = http.NewRequest("GET", s.URL+"/foo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		Range         string
+		Expected      string
+		ExpectedError string
+		ExpectedCode  int
+	}{
+		{
+			Range:        "bytes=0-2",
+			Expected:     "foo",
+			ExpectedCode: http.StatusPartialContent,
+		},
+		{
+			Range:        "bytes=1-2,4-5",
+			Expected:     "ooar",
+			ExpectedCode: http.StatusPartialContent,
+		},
+		{
+			Range:        "bytes=2-1000",
+			Expected:     "Requested range not satisfiable.\n",
+			ExpectedCode: http.StatusRequestedRangeNotSatisfiable,
+		},
+		{
+			Range:        "runes=2-3",
+			Expected:     "Bad request.\n",
+			ExpectedCode: http.StatusBadRequest,
+		},
+	}
+
+	for i, test := range tests {
+		req.Header.Set("Range", test.Range)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := resp.StatusCode, test.ExpectedCode; got != want {
+			t.Errorf("range test %d: bad status: got %d, want %d", i, got, want)
+		}
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := string(b), test.Expected; got != want {
+			t.Errorf("range test %d: bad response body: got %q, want %q", i, got, want)
+		}
 	}
 }
 
