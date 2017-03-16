@@ -4,17 +4,24 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/boltdb/bolt"
 	"github.com/echlebek/ranger"
 )
+
+// for xml encoding
+type bucket struct {
+	Keys []string `xml:"key"`
+}
 
 func splitPath(path string) [][]byte {
 	parts := [][]byte{{'/'}}
@@ -127,8 +134,52 @@ func getBucketOrValue(ctx context, w http.ResponseWriter, req *http.Request) {
 	}
 
 	if keys != nil {
-		w.Header().Set("Content-Type", "application/json")
+		writeKeys(w, req, keys)
+	}
+}
+
+func isText(hdr string) bool {
+	return (hdr == "" ||
+		strings.HasPrefix(hdr, "text/*") ||
+		strings.HasPrefix(hdr, "text/plain") ||
+		strings.HasPrefix(hdr, "*/*"))
+}
+
+func writeKeys(w http.ResponseWriter, req *http.Request, keys []string) {
+	accept := req.Header.Get("Accept")
+	if isText(accept) {
+		for _, k := range keys {
+			if _, err := fmt.Fprintln(w, k); err != nil {
+				log.Println(err)
+			}
+		}
+		return
+	}
+	if strings.HasPrefix(accept, "application/json") {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if err := json.NewEncoder(w).Encode(keys); err != nil {
+			log.Println(err)
+		}
+		return
+	}
+	if strings.HasPrefix(accept, "application/xml") {
+		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+		if _, err := w.Write([]byte(xml.Header)); err != nil {
+			log.Println(err)
+		}
+		enc := xml.NewEncoder(w)
+		enc.Indent("", "  ")
+		if err := enc.Encode(bucket{keys}); err != nil {
+			log.Println(err)
+		}
+		return
+	}
+	if strings.HasPrefix(accept, "text/html") {
+		pkg := &KeyPkg{
+			Path: req.URL.EscapedPath(),
+			Keys: keys,
+		}
+		if err := keysTmpl.Execute(w, pkg); err != nil {
 			log.Println(err)
 		}
 		return

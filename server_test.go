@@ -54,6 +54,94 @@ func newServer(t *testing.T) server {
 	}
 }
 
+func TestAccept(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	for _, x := range []string{"/foo", "/bar", "/baz"} {
+		req, err := http.NewRequest("PUT", s.URL+x, strings.NewReader("foobarbaz"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	req, err := http.NewRequest("GET", s.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Test some various forms of key list output
+	tests := []struct {
+		Accept   string
+		Expected string
+	}{
+		{
+			Accept:   "application/json",
+			Expected: "[\"bar\",\"baz\",\"foo\"]\n",
+		},
+		{
+			Accept:   "application/xml",
+			Expected: "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<bucket>\n  <key>bar</key>\n  <key>baz</key>\n  <key>foo</key>\n</bucket>",
+		},
+		{
+			Accept:   "text/plain",
+			Expected: "bar\nbaz\nfoo\n",
+		},
+		{
+			Accept:   "text/*",
+			Expected: "bar\nbaz\nfoo\n",
+		},
+		{
+			Accept:   "",
+			Expected: "bar\nbaz\nfoo\n",
+		},
+		{
+			Accept:   "*/*",
+			Expected: "bar\nbaz\nfoo\n",
+		},
+	}
+
+	for i, test := range tests {
+		req.Header.Set("Accept", test.Accept)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		if got, want := string(b), test.Expected; got != want {
+			t.Errorf("test %d: bad body: got %q, want %q", i, got, want)
+		}
+	}
+
+	// And now for html
+	req.Header.Set("Accept", "text/html")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Not bothering comparing full text here
+	if got, want := len(b), 587; got != want {
+		t.Errorf("bad html length: got %d, want %d", got, want)
+	}
+}
+
 func TestRange(t *testing.T) {
 	s := newServer(t)
 	defer s.Close()
@@ -324,8 +412,8 @@ func TestCRUD(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if got, want := body, []byte("[]\n"); !bytes.Equal(got, want) {
-			t.Errorf("bad body: got %q, want %q", string(got), string(want))
+		if len(body) > 0 {
+			t.Errorf("bad body: got %q, want %q", string(body), "")
 		}
 	}
 
@@ -372,12 +460,9 @@ func TestCRUD(t *testing.T) {
 		}
 
 		// Expect to see a bucket "foo"
-		got, want := []string{}, []string{"foo"}
-		if err := json.Unmarshal(b, &got); err != nil {
-			t.Fatal(err)
-		}
+		got, want := string(b), "foo\n"
 
-		if !reflect.DeepEqual(got, want) {
+		if got != want {
 			t.Errorf("bad bucket list: got %v, want %v", got, want)
 		}
 	}
@@ -394,12 +479,9 @@ func TestCRUD(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		got, want := []string{}, []string{"bar"}
-		if err := json.Unmarshal(b, &got); err != nil {
-			t.Fatal(err)
-		}
+		got, want := string(b), "bar\n"
 
-		if !reflect.DeepEqual(got, want) {
+		if got != want {
 			t.Errorf("bad bucket list: got %v, want %v", got, want)
 		}
 	}
