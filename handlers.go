@@ -18,11 +18,6 @@ import (
 	"github.com/echlebek/ranger"
 )
 
-// for xml encoding
-type bucket struct {
-	Keys []string `xml:"key"`
-}
-
 func splitPath(path string) [][]byte {
 	parts := [][]byte{{'/'}}
 	for _, p := range bytes.Split([]byte(path), []byte{'/'}) {
@@ -163,6 +158,10 @@ func writeKeys(w http.ResponseWriter, req *http.Request, keys []string) {
 		return
 	}
 	if strings.HasPrefix(accept, "application/xml") {
+		type bucket struct {
+			Keys []string `xml:"key"`
+		}
+
 		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 		if _, err := w.Write([]byte(xml.Header)); err != nil {
 			log.Println(err)
