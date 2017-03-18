@@ -54,6 +54,22 @@ func newServer(t *testing.T) server {
 	}
 }
 
+func TestCantGetHeaderBucket(t *testing.T) {
+	s := newServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	for i, path := range []string{"/%00headers", string([]byte{'/', 0}) + "headers"} {
+		resp, err := client.Get(s.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := resp.StatusCode, http.StatusNotFound; got != want {
+			t.Errorf("test %d: bad status: got %d, want %d", i, got, want)
+		}
+	}
+}
+
 func TestAccept(t *testing.T) {
 	s := newServer(t)
 	defer s.Close()
