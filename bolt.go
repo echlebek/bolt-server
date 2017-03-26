@@ -13,7 +13,10 @@ func createHeaderBucketIfNotExists(db *bolt.DB) error {
 		if err != nil {
 			return err
 		}
-		return bucket.Put([]byte("/"), []byte("{}"))
+		if bucket.Get([]byte("/")) == nil {
+			return bucket.Put([]byte("/"), []byte("{}"))
+		}
+		return nil
 	})
 }
 
