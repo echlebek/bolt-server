@@ -6,19 +6,29 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/echlebek/bolt-server/config"
 	"github.com/echlebek/bolt-server/server"
 )
 
 var (
 	DBName = flag.String("db", "bolt.db", "Bolt database to use")
 	Port   = flag.Int("port", 8080, "Port to serve from")
+	Config = flag.String("config", "", "Config file (JSON)")
 )
 
 func main() {
 	flag.Parse()
-	handler, err := server.New(*DBName)
+	var cfg config.Data
+	if len(*Config) > 0 {
+		var err error
+		cfg, err = config.New(*Config)
+		if err != nil {
+			log.Fatalf("fatal: %s", err)
+		}
+	}
+	handler, err := server.New(*DBName, cfg)
 	if err != nil {
-		log.Fatalf("fatal error: %s", err)
+		log.Fatalf("fatal : %s", err)
 	}
 	http.ListenAndServe(fmt.Sprintf(":%d", *Port), handler)
 }

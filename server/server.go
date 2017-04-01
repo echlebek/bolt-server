@@ -28,6 +28,7 @@ import (
 	"net/http"
 
 	"github.com/boltdb/bolt"
+	"github.com/echlebek/bolt-server/config"
 )
 
 var (
@@ -51,7 +52,7 @@ func logRequest(req *http.Request) {
 	log.Println(req.Method, req.URL.Path)
 }
 
-func New(dbName string) (http.Handler, error) {
+func New(dbName string, cfg config.Data) (http.Handler, error) {
 	db, err := bolt.Open(dbName, 0600, nil)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't open bolt db: %s", err)
