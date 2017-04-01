@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io/ioutil"
 	"log"
@@ -47,7 +48,7 @@ type server struct {
 func newServer(t *testing.T) server {
 	t.Parallel()
 	db := getBoltDB(t)
-	ctx := context{db}
+	ctx := withDB(context.Background(), db)
 	return server{
 		Server: httptest.NewServer(router{ctx: ctx}),
 		db:     db,

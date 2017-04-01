@@ -22,6 +22,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -40,12 +41,16 @@ var (
 	errBadRequest = errors.New("bad request")
 )
 
-type context struct {
-	db *bolt.DB
+const (
+	boltDBContextKey = "bolt"
+)
+
+func withDB(ctx context.Context, db *bolt.DB) context.Context {
+	return context.WithValue(ctx, boltDBContextKey, db)
 }
 
 type router struct {
-	ctx context
+	ctx context.Context
 }
 
 func logRequest(req *http.Request) {
@@ -64,7 +69,9 @@ func New(dbName string, cfg config.Data) (http.Handler, error) {
 		return nil, fmt.Errorf("couldn't create root bucket: %s", err)
 	}
 
-	return router{ctx: context{db: db}}, nil
+	ctx := withDB(context.Background(), db)
+
+	return router{ctx: ctx}, nil
 }
 
 func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
