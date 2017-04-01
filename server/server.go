@@ -19,11 +19,10 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-package main
+package server
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -32,8 +31,6 @@ import (
 )
 
 var (
-	DBName                = flag.String("db", "bolt.db", "Bolt database to use")
-	Port                  = flag.Int("port", 8080, "Port to serve from")
 	headerBucket          = append([]byte{0}, []byte("headers")...)
 	headerFieldsToExtract = []string{
 		"Content-Type",
@@ -52,6 +49,21 @@ type router struct {
 
 func logRequest(req *http.Request) {
 	log.Println(req.Method, req.URL.Path)
+}
+
+func New(dbName string) (http.Handler, error) {
+	db, err := bolt.Open(dbName, 0600, nil)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't open bolt db: %s", err)
+	}
+	if err := createHeaderBucketIfNotExists(db); err != nil {
+		return nil, fmt.Errorf("couldn't create header bucket: %s", err)
+	}
+	if err := createRootBucketIfNotExists(db); err != nil {
+		return nil, fmt.Errorf("couldn't create root bucket: %s", err)
+	}
+
+	return router{ctx: context{db: db}}, nil
 }
 
 func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
@@ -73,21 +85,4 @@ func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	default:
 		http.Error(w, "Bad request.", http.StatusBadRequest)
 	}
-}
-
-func main() {
-	flag.Parse()
-	db, err := bolt.Open(*DBName, 0600, nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := createHeaderBucketIfNotExists(db); err != nil {
-		log.Fatal(err)
-	}
-	if err := createRootBucketIfNotExists(db); err != nil {
-		log.Fatal(err)
-	}
-	ctx := context{db}
-	router := router{ctx}
-	http.ListenAndServe(fmt.Sprintf(":%d", *Port), router)
 }
