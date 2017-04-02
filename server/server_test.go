@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	"github.com/gorilla/csrf"
 )
 
 func init() {
@@ -56,6 +57,71 @@ func newServer(t *testing.T) server {
 	return server{
 		Server: httptest.NewServer(router{ctx: ctx}),
 		db:     db,
+	}
+}
+
+func newCSRFServer(t *testing.T) server {
+	t.Parallel()
+	db := getBoltDB(t)
+	ctx := withDB(context.Background(), db)
+	csrf := csrf.Protect([]byte("abcdefghijklmnopqrstuvwxyz123456"), csrf.Secure(false))
+	return server{
+		Server: httptest.NewServer(csrf(router{ctx: ctx, csrf: true})),
+		db:     db,
+	}
+}
+
+func TestCSRF(t *testing.T) {
+	s := newCSRFServer(t)
+	defer s.Close()
+	client := &http.Client{}
+
+	resp, err := client.Head(s.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	token := resp.Header.Get("X-CSRF-Token")
+	if len(token) == 0 {
+		t.Fatal("expected token")
+	}
+	cookies := resp.Cookies()
+
+	req, err := http.NewRequest("PUT", s.URL+"/foobar", strings.NewReader("foobar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	req.Header.Set("X-CSRF-Token", "bs")
+
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, 403; got != want {
+		t.Errorf("bad status: got %d, want %d", got, want)
+	}
+
+	req, err = http.NewRequest("PUT", s.URL+"/foobar", strings.NewReader("foobar"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cookies {
+		req.AddCookie(c)
+	}
+	req.Header.Set("X-CSRF-Token", token)
+
+	resp, err = client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := resp.StatusCode, 201; got != want {
+		t.Errorf("bad status: got %d, want %d", got, want)
 	}
 }
 

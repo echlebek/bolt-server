@@ -22,9 +22,13 @@ func New(path string) (Data, error) {
 	if err = yaml.Unmarshal(b, &data); err != nil {
 		err = fmt.Errorf("couldn't unmarshal config data: %s", err)
 	}
+	if err = data.CSRF.Validate(); err != nil {
+		return data, fmt.Errorf("validation error: %s", err)
+	}
 	return data, err
 }
 
 type Data struct {
-	TLS auth.TLSConfig
+	TLS  auth.TLSConfig
+	CSRF auth.CSRFConfig
 }

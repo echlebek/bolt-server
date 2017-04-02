@@ -13,6 +13,7 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/echlebek/bolt-server/config"
+	"github.com/gorilla/csrf"
 )
 
 var (
@@ -33,7 +34,8 @@ func withDB(ctx context.Context, db *bolt.DB) context.Context {
 }
 
 type router struct {
-	ctx context.Context
+	ctx  context.Context
+	csrf bool
 }
 
 func logRequest(req *http.Request) {
@@ -53,12 +55,25 @@ func New(dbName string, cfg config.Data) (http.Handler, error) {
 	}
 
 	ctx := withDB(context.Background(), db)
+	var handler http.Handler = router{ctx: ctx, csrf: len(cfg.CSRF.Key) == 32}
 
-	return router{ctx: ctx}, nil
+	if len(cfg.CSRF.Key) == 32 {
+		handler = csrf.Protect([]byte(cfg.CSRF.Key))(handler)
+	}
+
+	return handler, nil
 }
 
 func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	logRequest(req)
+
+	if r.csrf {
+		switch req.Method {
+		case "HEAD", "OPTIONS", "GET":
+			w.Header().Set("X-CSRF-Token", csrf.Token(req))
+		}
+	}
+
 	switch req.Method {
 	case "HEAD":
 		getHeader(r.ctx, w, req)
