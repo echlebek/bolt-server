@@ -34,5 +34,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("fatal : %s", err)
 	}
-	http.ListenAndServe(fmt.Sprintf(":%d", *Port), handler)
+	if len(cfg.TLS.Cert) > 0 {
+		http.ListenAndServeTLS(fmt.Sprintf(":%d", *Port), cfg.TLS.Cert, cfg.TLS.Key, handler)
+	} else {
+		http.ListenAndServe(fmt.Sprintf(":%d", *Port), handler)
+	}
 }

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/echlebek/bolt-server/auth"
+
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -24,4 +26,5 @@ func New(path string) (Data, error) {
 }
 
 type Data struct {
+	TLS auth.TLSConfig
 }
