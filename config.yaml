@@ -1,0 +1,5 @@
+tls:
+  key: example.key
+  cert: example.crt
+csrf:
+  key: abcdefghijklmnopqrstuvwxyz123456
