@@ -6,7 +6,6 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io/ioutil"
 	"log"
@@ -45,30 +44,24 @@ func getBoltDB(t *testing.T) *bolt.DB {
 	return db
 }
 
-type server struct {
-	*httptest.Server
-	db *bolt.DB
-}
-
-func newServer(t *testing.T) server {
+func newServer(t *testing.T) *httptest.Server {
 	t.Parallel()
 	db := getBoltDB(t)
-	ctx := withDB(context.Background(), db)
-	return server{
-		Server: httptest.NewServer(router{ctx: ctx}),
-		db:     db,
+	server := server{
+		db: db,
 	}
+	return httptest.NewServer(server)
 }
 
-func newCSRFServer(t *testing.T) server {
+func newCSRFServer(t *testing.T) *httptest.Server {
 	t.Parallel()
 	db := getBoltDB(t)
-	ctx := withDB(context.Background(), db)
 	csrf := csrf.Protect([]byte("abcdefghijklmnopqrstuvwxyz123456"), csrf.Secure(false))
-	return server{
-		Server: httptest.NewServer(csrf(router{ctx: ctx, csrf: true})),
-		db:     db,
+	server := server{
+		db:   db,
+		csrf: true,
 	}
+	return httptest.NewServer(csrf(server))
 }
 
 func TestCSRF(t *testing.T) {

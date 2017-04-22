@@ -5,7 +5,6 @@
 package server
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -25,16 +24,8 @@ var (
 	errBadRequest = errors.New("bad request")
 )
 
-const (
-	boltDBContextKey = "bolt"
-)
-
-func withDB(ctx context.Context, db *bolt.DB) context.Context {
-	return context.WithValue(ctx, boltDBContextKey, db)
-}
-
-type router struct {
-	ctx  context.Context
+type server struct {
+	db   *bolt.DB
 	csrf bool
 }
 
@@ -54,8 +45,7 @@ func New(dbName string, cfg config.Data) (http.Handler, error) {
 		return nil, fmt.Errorf("couldn't create root bucket: %s", err)
 	}
 
-	ctx := withDB(context.Background(), db)
-	var handler http.Handler = router{ctx: ctx, csrf: len(cfg.CSRF.Key) == 32}
+	var handler http.Handler = server{db: db, csrf: len(cfg.CSRF.Key) == 32}
 
 	if len(cfg.CSRF.Key) == 32 {
 		handler = csrf.Protect([]byte(cfg.CSRF.Key))(handler)
@@ -64,10 +54,10 @@ func New(dbName string, cfg config.Data) (http.Handler, error) {
 	return handler, nil
 }
 
-func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (s server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	logRequest(req)
 
-	if r.csrf {
+	if s.csrf {
 		switch req.Method {
 		case "HEAD", "OPTIONS", "GET":
 			w.Header().Set("X-CSRF-Token", csrf.Token(req))
@@ -76,15 +66,15 @@ func (r router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	switch req.Method {
 	case "HEAD":
-		getHeader(r.ctx, w, req)
+		s.getHeader(w, req)
 	case "OPTIONS":
 		w.Header().Set("Allow", "GET,PUT,DELETE,HEAD")
 	case "GET":
-		getBucketOrValue(r.ctx, w, req)
+		s.getBucketOrValue(w, req)
 	case "PUT":
-		putBucketOrValue(r.ctx, w, req)
+		s.putBucketOrValue(w, req)
 	case "DELETE":
-		deleteBucketOrKey(r.ctx, w, req)
+		s.deleteBucketOrKey(w, req)
 	case "POST", "PATCH", "TRACE", "CONNECT":
 		w.Header().Set("Allow", "GET,PUT,DELETE,HEAD")
 		http.Error(w, "Method not allowed.", http.StatusMethodNotAllowed)

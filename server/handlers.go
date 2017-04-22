@@ -6,7 +6,6 @@ package server
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
@@ -45,11 +44,7 @@ func checkIfNoneMatch(storedHeader http.Header, req *http.Request) bool {
 	return false
 }
 
-func getDB(ctx context.Context) *bolt.DB {
-	return ctx.Value(boltDBContextKey).(*bolt.DB)
-}
-
-func getBucketOrValue(ctx context.Context, w http.ResponseWriter, req *http.Request) {
+func (s server) getBucketOrValue(w http.ResponseWriter, req *http.Request) {
 	var (
 		keys []string
 		err  error
@@ -57,8 +52,7 @@ func getBucketOrValue(ctx context.Context, w http.ResponseWriter, req *http.Requ
 
 	parts := splitPath(req.URL.EscapedPath())
 
-	db := getDB(ctx)
-	err = db.View(func(tx *bolt.Tx) error {
+	err = s.db.View(func(tx *bolt.Tx) error {
 		header, err := getHeaderValue(tx, req.URL.EscapedPath())
 		if err != nil {
 			return fmt.Errorf("couldn't get header: %s", err)
@@ -230,7 +224,7 @@ func checkIfMatch(header http.Header, req *http.Request) bool {
 	return false
 }
 
-func putBucketOrValue(ctx context.Context, w http.ResponseWriter, req *http.Request) {
+func (s server) putBucketOrValue(w http.ResponseWriter, req *http.Request) {
 	if badPutOrDeleteHeaders(w, req) {
 		return
 	}
@@ -238,8 +232,7 @@ func putBucketOrValue(ctx context.Context, w http.ResponseWriter, req *http.Requ
 	key := parts[len(parts)-1]
 	msg := "Out of cheese."
 	status := 500
-	db := getDB(ctx)
-	err := db.Update(func(tx *bolt.Tx) error {
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		alreadyExists := false
 		if req.ContentLength > 0 {
 			header, err := getHeaderValue(tx, req.URL.EscapedPath())
@@ -313,7 +306,7 @@ func writeHeaderValue(tx *bolt.Tx, path string, header http.Header) error {
 
 }
 
-func deleteBucketOrKey(ctx context.Context, w http.ResponseWriter, req *http.Request) {
+func (s server) deleteBucketOrKey(w http.ResponseWriter, req *http.Request) {
 	if badPutOrDeleteHeaders(w, req) {
 		return
 	}
@@ -329,8 +322,7 @@ func deleteBucketOrKey(ctx context.Context, w http.ResponseWriter, req *http.Req
 		return
 	}
 	var msg, status = "Out of cheese.", http.StatusInternalServerError
-	db := getDB(ctx)
-	err := db.Update(func(tx *bolt.Tx) error {
+	err := s.db.Update(func(tx *bolt.Tx) error {
 		header, err := getHeaderValue(tx, req.URL.EscapedPath())
 		if err != nil {
 			log.Printf("couldn't get header: %s", err)
@@ -394,10 +386,9 @@ func writeHeader(header http.Header, w http.ResponseWriter) {
 	}
 }
 
-func getHeader(ctx context.Context, w http.ResponseWriter, req *http.Request) {
+func (s server) getHeader(w http.ResponseWriter, req *http.Request) {
 	var header http.Header
-	db := getDB(ctx)
-	err := db.View(func(tx *bolt.Tx) error {
+	err := s.db.View(func(tx *bolt.Tx) error {
 		var err error
 		header, err = getHeaderValue(tx, req.URL.EscapedPath())
 		return err
